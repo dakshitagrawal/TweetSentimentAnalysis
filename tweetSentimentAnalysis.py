@@ -28,7 +28,7 @@ def polishData(df):
     data = []
 
     for i in xrange(0, df.shape[0]):
-        no_links = re.sub("https?:\/\/.*[\r\n]*", " ", df['tweet'][i], flags=re.MULTILINE)
+        no_links = re.sub("https?:\/\/.*[\r\n]*", " ", df.iloc[:,0][i], flags=re.MULTILINE)
 
         letters_only = re.sub("[^a-zA-Z]", " ", no_links)
 
@@ -40,17 +40,24 @@ def polishData(df):
         final_string = " ".join(words)
     
         data.append(final_string)
+        
+    print len(data)
+    print data
     
     return data
 #%%
 def labelsOneHot(df):
-    sentiOneHot = pd.get_dummies(df['senti'])
+    sentiOneHot = pd.get_dummies(df.iloc[:,1])
+    print sentiOneHot
 
     labels = np.empty((sentiOneHot.shape), dtype = int)
 
     for i in xrange(0,sentiOneHot.shape[1]):
         numbers = np.array(sentiOneHot.iloc[:,i])
         labels[:,i] = numbers
+              
+    print len(labels)
+    print labels
 
     return labels
 #%%
@@ -101,7 +108,7 @@ def dataReduce(train_data, vectorizer, reducer = None, n_components = 1000, ngra
     return train_data_reduced, vectorizer, reducer
 #%%
 def train(train_data_reduced, train_labels, nb_epoch, batch_size, 
-          hidden_layer = 30, optimizer = 'adam', loss = 'categorical_crossentropy'):
+          hidden_layer = 500, optimizer = 'adam', loss = 'categorical_crossentropy'):
     
     model = Sequential()
     model.add(Dense(hidden_layer,input_dim = train_data_reduced.shape[1], activation = 'relu'))
@@ -123,19 +130,38 @@ def test(test_data, test_labels, model, vectorizer = None, reducer = None):
         test_data_vectorized = np.array(test_data_vectorized)
         
     print test_data_reduced.shape
-
-    scores = model.evaluate(test_data_reduced, test_labels)
-    print("\n%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
+     
+    scores = model.predict(test_data_reduced, batch_size = 1)
+        
+    return scores
 #%%
-path = "./twitter.csv"
+path = "./train_data.csv"
 df = pd.read_csv(path)
+df
 #%%
 data, labels = polishDataSet(df)
+#%%
 test_split = 0.20
 train_data, test_data, train_labels, test_labels = train_test_split(data, labels, test_size = test_split, random_state = 42)
-train_data_reduced, vectorizer, reducer = dataReduce(train_data,'tfidf', n_components = 1000, ngram = False, ngram_value = 1)
-model = train(train_data_reduced, train_labels, 10, 10)
-
 #%%
-test(test_data, test_labels, model, vectorizer, reducer)
+train_data_reduced, vectorizer, reducer = dataReduce(train_data,'tfidf', n_components = 700 , ngram = True, ngram_value = 2)
+#%%
+model = train(train_data_reduced, train_labels, 10, 10, hidden_layer = 500)
+#%%
+scores = test(test_data, test_labels, model, vectorizer, reducer)
+#%%
+from keras.utils.np_utils import to_categorical
+
+predicted = []
+labels = []
+
+for i in xrange(0, scores.shape[0]):
+    number = np.argmax(scores[i])
+    numbers.append(number)
+    
+    label = np.argmax(test_labels[i])
+    labels.append(label)
+    
+totalClassifiedTest = sum(int(x == y) for x, y in zip(numbers, labels))
+print "Test Accuracy after iteration: %i / %i" %(totalClassifiedTest, len(labels))
 
