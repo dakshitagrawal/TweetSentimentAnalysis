@@ -4,10 +4,10 @@ Created on Sat Sep 02 00:34:54 2017
 
 @author: shyam
 """
-
 import pandas as pd
 import re
 
+import nltk
 from nltk.corpus import stopwords
 
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -18,7 +18,6 @@ from sklearn.model_selection import train_test_split
 
 import numpy as np
 
-import keras
 from keras.layers import Dense
 from keras.models import Sequential
 from keras import optimizers
@@ -40,26 +39,25 @@ def polishData(df):
         final_string = " ".join(words)
     
         data.append(final_string)
-        
-    print len(data)
-    print data
     
     return data
 #%%
 def labelsOneHot(df):
     sentiOneHot = pd.get_dummies(df.iloc[:,1])
-    print sentiOneHot
 
     labels = np.empty((sentiOneHot.shape), dtype = int)
 
     for i in xrange(0,sentiOneHot.shape[1]):
         numbers = np.array(sentiOneHot.iloc[:,i])
         labels[:,i] = numbers
-              
-    print len(labels)
-    print labels
 
     return labels
+#%%
+def polishDataSet(df):
+    data = polishData(df)
+    labels = labelsOneHot(df)
+    
+    return data, labels
 #%%
 def BOW(train_data, analyzerType, ngram_value):
     
@@ -82,12 +80,6 @@ def SVD(train_data_vectorized, n_components):
     print train_data_reduced.shape
     return train_data_reduced, svd
 #%%
-def polishDataSet(df):
-    data = polishData(df)
-    labels = labelsOneHot(df)
-    
-    return data, labels
-#%%
 """change the n_components value so that 85% of the variance is captured"""
 
 def dataReduce(train_data, vectorizer, reducer = None, n_components = 1000, ngram = False, ngram_value = 1):
@@ -107,61 +99,50 @@ def dataReduce(train_data, vectorizer, reducer = None, n_components = 1000, ngra
     
     return train_data_reduced, vectorizer, reducer
 #%%
-def train(train_data_reduced, train_labels, nb_epoch, batch_size, 
-          hidden_layer = 500, optimizer = 'adam', loss = 'categorical_crossentropy'):
+def makeModel(train_data_reduced, train_labels, hidden_layer = 30, 
+              activation = 'relu', optimizer = 'adam', loss = 'categorical_crossentropy'):
     
     model = Sequential()
-    model.add(Dense(hidden_layer,input_dim = train_data_reduced.shape[1], activation = 'relu'))
-    model.add(Dense(train_labels.shape[1],activation = 'softmax'))
+    model.add(Dense(hidden_layer,input_dim = train_data_reduced.shape[1], activation = activation))
+    model.add(Dense(train_labels.shape[1], activation = 'softmax'))
     model.compile(optimizer = optimizer, loss = loss, metrics = ['accuracy'])
-    model.fit(train_data_reduced, train_labels, nb_epoch = nb_epoch, batch_size = batch_size)
     
     return model
 #%%
-def test(test_data, test_labels, model, vectorizer = None, reducer = None):
+def evaluateModel(test_data, test_labels, model, vectorizer = None, reducer = None):
     
     if vectorizer:
         test_data_vectorized = vectorizer.transform(test_data)
+    else:
+        test_data_vectorized = test_data
         
     if reducer:
         test_data_reduced = reducer.transform(test_data_vectorized)
         test_data_reduced = np.array(test_data_reduced)
     else:
-        test_data_vectorized = np.array(test_data_vectorized)
-        
-    print test_data_reduced.shape
-     
-    scores = model.predict(test_data_reduced, batch_size = 1)
+        test_data_reduced = np.array(test_data_vectorized)
+             
+    scores = model.evaluate(test_data_reduced, test_labels)
+    print("\n%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))   
         
     return scores
 #%%
-path = "./train_data.csv"
+path = "./twitter.csv"
 df = pd.read_csv(path)
-df
 #%%
 data, labels = polishDataSet(df)
 #%%
 test_split = 0.20
 train_data, test_data, train_labels, test_labels = train_test_split(data, labels, test_size = test_split, random_state = 42)
 #%%
-train_data_reduced, vectorizer, reducer = dataReduce(train_data,'tfidf', n_components = 700 , ngram = True, ngram_value = 2)
+train_data_reduced, vectorizer, reducer = dataReduce(train_data,'tfidf', n_components = 550 , ngram = True, ngram_value = 2)
 #%%
-model = train(train_data_reduced, train_labels, 10, 10, hidden_layer = 500)
+model = makeModel(train_data_reduced, train_labels, hidden_layer = 50, 
+                  activation = 'relu', optimizer = 'adam', loss = 'categorical_crossentropy')
 #%%
-scores = test(test_data, test_labels, model, vectorizer, reducer)
+epochs = 20
+batch_size = 32
+model.fit(train_data_reduced, train_labels, epochs = epochs, batch_size = batch_size)
 #%%
-from keras.utils.np_utils import to_categorical
-
-predicted = []
-labels = []
-
-for i in xrange(0, scores.shape[0]):
-    number = np.argmax(scores[i])
-    numbers.append(number)
-    
-    label = np.argmax(test_labels[i])
-    labels.append(label)
-    
-totalClassifiedTest = sum(int(x == y) for x, y in zip(numbers, labels))
-print "Test Accuracy after iteration: %i / %i" %(totalClassifiedTest, len(labels))
+model.evaluateModel(test_data, test_labels, model, vectorizer, reducer)
 
